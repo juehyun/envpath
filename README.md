@@ -25,6 +25,6 @@ enter command as like following ...
 after modification, you shold "save" it ! otherwise the changes are discarded
 
 as you know, changed PATH env.variable on windows register are effective from next session
-if you want to apply changes to current cmd.exe session right now,
-after quit, run "refreshenv" command 
+
+if you want to apply changes to current cmd.exe session right now, after quit, run "refreshenv" command 
 
