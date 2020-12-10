@@ -28,3 +28,7 @@ as you know, changed PATH env.variable on windows register are effective from ne
 
 if you want to apply changes to current cmd.exe session right now, after quit, run "refreshenv" command 
 
+## License
+
+MIT, Joohyun Lee ( juehyun@etri.re.kr )
+
