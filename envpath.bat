@@ -28,13 +28,13 @@ setlocal EnableDelayedExpansion
 
 set ESC=
 
-call :initVariables
-call :getPathVariable
+call :initializeInternalVariables
+call :getPathVariables
 
 :MainLoop
 
-call :printCurrent
-call :cmdInputExecution
+call :showCurrentStatusOfPathVariables
+call :showMenuGetInput
 
 EXIT /B %ERRORLEVEL%
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -47,11 +47,12 @@ EXIT /B %ERRORLEVEL%
     echo %ESC%[91m%*%ESC%[0m
     goto :EOF
 
-:cmdInputExecution
+:showMenuGetInput
     echo :::::::::: Enter Command ::::::::::
     echo :: (a)dd number path : insert path at specified pos
     echo :: (d)el number      : remove the path from specified pos
     echo :: (s)ave            : update the user-level "PATH" environment variable
+    echo :: (b)ackup          : backup current "PATH" environment variables to file ("envpath.sav")
     echo :: enter             : quit
 
     set cmd=Nop
@@ -75,28 +76,41 @@ EXIT /B %ERRORLEVEL%
     set act_char=%act:~0,1%
 
     call :checkValidAction
+    :: -------------------------------------------------
     if not %valid% EQU 1 goto :MainLoop
 
+    :: -------------------------------------------------
     if /i %act_char% EQU A (
         call :checkValidNumber
-        if not %valid% EQU 1 goto :MainLoop
+        if not !valid! EQU 1 goto :MainLoop
 
         call :checkValidPath
-        if not %valid% EQU 1 goto :MainLoop
+        if not !valid! EQU 1 goto :MainLoop
 
-        call :addPath %num% %dir%
+        call :addPath %num% "%dir%"
     )
 
+    :: -------------------------------------------------
     if /i %act_char% EQU D (
         call :checkValidNumber
-        if not %valid% EQU 1 goto :MainLoop
+        if not !valid! EQU 1 goto :MainLoop
 
         call :delPath %num%
     )
 
+    :: -------------------------------------------------
     if /i %act_char% EQU S (
         call :savePath
+        :: savePath will clear all internal variables (e.g. act_char)
+        goto :MainLoop
     )
+
+    :: -------------------------------------------------
+    if /i %act_char% EQU B (
+        call :backupCurrentStatus
+    )
+
+    :: -------------------------------------------------
     goto :MainLoop
 
 :savePath
@@ -124,17 +138,17 @@ EXIT /B %ERRORLEVEL%
     echo.
     echo ==System PATH==
     call :echoG %syspp%
-    call :savePathSystemVariable
+    call :savePath
 
     echo ==User   PATH==
     call :echoG %usrpp%
     setx PATH "%usrpp%"
 
-    call :initVariables
-    call :getPathVariable
+    call :initializeInternalVariables
+    call :getPathVariables
     goto :EOF
 
-:savePathSystemVariable
+:savePath
     echo set UAC = CreateObject^("Shell.Application"^) > "__getadmin.vbs"
     echo UAC.ShellExecute "cmd.exe", "/c setx PATH ""%syspp%"" /m", "", "runas", 1 >> "__getadmin.vbs"
     __getadmin.vbs
@@ -145,8 +159,8 @@ EXIT /B %ERRORLEVEL%
     if %1 LEQ %searchDirsLastIdx% if %1 GEQ 0 (
         set ty=!searchDirsType[%1]!
         set searchDirsTag[%1]=Del
+        call :echoG remove [%1] [!ty!] !searchDirs[%1]! (total !searchDirsCnt! items)
     )
-    call :echoG remove [%1] [%ty%] !searchDirs[%1]! (total %searchDirsCnt% items)
     goto :EOF
 
 :addPath
@@ -163,19 +177,20 @@ EXIT /B %ERRORLEVEL%
         :: adjust index and insert new path
         set /a searchDirsLastIdx=searchDirsLastIdx+1
         set /a searchDirsCnt=searchDirsCnt+1
-        set searchDirs[%1]=%2
+        set searchDirs[%1]=%~2
         set searchDirsTag[%1]=Add
         set searchDirsType[%1]=!ty!
+        call :echoG insert [%1] [!ty!] "%~2" - results total !searchDirsCnt! items
     )
-    call :echoG insert [%1] [%ty%] "%2" (total %searchDirsCnt% items)
     goto :EOF
 
 
 :checkValidAction
     ::echo checkValidAction
     set valid=1
-    if /i not %act_char% EQU A if /i not %act_char% EQU D if /i not %act_char% EQU S set valid=0
-    
+
+    if /i not %act_char% EQU A if /i not %act_char% EQU D if /i not %act_char% EQU S if /i not %act_char% EQU B set valid=0
+
     if %valid% EQU 0 (
         call :echoR Error: invalid command action "%act%"
     )
@@ -201,17 +216,37 @@ EXIT /B %ERRORLEVEL%
 :checkValidPath
     ::echo checkValidPath
     set valid=1
-    if not exist %dir% set valid=0
+    if not exist "%dir%" set valid=0
 
     if %valid% EQU 0 (
         call :echoR Error: invalid path "%dir%"
     )
     goto :EOF
 
-:printCurrent
+:backupCurrentStatus
+    echo backupCurrentStatus
+    set savefile=envpath.sav
+    echo save current path variables to envpath.sav > %savefile%
+    for /l %%n in (0,1,%searchDirsLastIdx%) do (
+        if !searchDirsTag[%%n]! == Org (
+            echo [!searchDirsTag[%%n]!] [%%n] [!searchDirsType[%%n]!] !searchDirs[%%n]! >> %savefile%
+        )
+        if !searchDirsTag[%%n]! == Add (
+            echo [!searchDirsTag[%%n]!] [%%n] [!searchDirsType[%%n]!] !searchDirs[%%n]! >> %savefile%
+        )
+        if !searchDirsTag[%%n]! == Del (
+            echo [!searchDirsTag[%%n]!] [%%n] [!searchDirsType[%%n]!] !searchDirs[%%n]! >> %savefile%
+        )
+    )
+    call :echoG current path variables has been saved to "%savefile%"
+    goto :EOF
+
+:showCurrentStatusOfPathVariables
     echo ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     echo :::::::::: Search Path ( user PATH environment variable ) ::::::::::
     echo ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    set nusrpp=0
+    set nsyspp=0
     for /l %%n in (0,1,%searchDirsLastIdx%) do (
         if !searchDirsTag[%%n]! == Org (
             echo [!searchDirsTag[%%n]!] [%%n] [!searchDirsType[%%n]!] !searchDirs[%%n]!
@@ -222,11 +257,16 @@ EXIT /B %ERRORLEVEL%
         if !searchDirsTag[%%n]! == Del (
             call :echoR [!searchDirsTag[%%n]!] [%%n] [!searchDirsType[%%n]!] !searchDirs[%%n]!
         )
+        if !searchDirsType[%%n]! == SYS (
+            set /a nsyspp=nsyspp+1
+        ) else (
+            set /a nusrpp=nusrpp+1
+        )
     )
-    call :echoG total %searchDirsCnt% items
+    call :echoG total %searchDirsCnt% items (System:%nsyspp%, User:%nusrpp%)
     goto :EOF
 
-:getPathVariable
+:getPathVariables
     call :echoG Retrieve PATH environment variable ...
     echo.
     for /f "tokens=1,2,*" %%a in ( 'reg query "HKCU\Environment" /v PATH' ) do set usrpp=%%c
@@ -277,7 +317,7 @@ EXIT /B %ERRORLEVEL%
     set /a searchDirsLastIdx=searchDirsLastIdx-1
     goto :EOF
 
-:initVariables
+:initializeInternalVariables
     call :echoG Initialize internal variables
     echo.
     set searchDirs=
